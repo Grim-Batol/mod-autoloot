@@ -26,7 +26,7 @@ public:
         {
             player->ModifyMoney(gold);
             player->UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_LOOT_MONEY, loot->gold);
-    
+
             WorldPacket data(SMSG_LOOT_MONEY_NOTIFY, 4 + 1);
             data << uint32(loot->gold);
             data << uint8(1); 
@@ -38,18 +38,36 @@ public:
         for (uint32 i = 0; i < maxSlot; ++i) 
         {
             LootItem* item = loot->LootItemInSlot(i, player);
-            if(player->AddItem(item->itemid, item->count))
+
+            ItemPosCountVec dest;
+            InventoryResult result = player->CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, item->itemid, item->count);
+            if (result == EQUIP_ERR_OK)
             {
+                Item* storedItem = player->StoreNewItem(dest, item->itemid, true, item->randomPropertyId);
+                if (!storedItem)
+                {
+                    player->SendItemRetrievalMail(item->itemid, item->count);
+                    item->is_looted = true;
+                    continue;
+                }
+
+                player->SendNewItem(storedItem, item->count, true, false);
                 item->is_looted = true;
                 player->UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_LOOT_ITEM, item->itemid, item->count);
                 player->UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_LOOT_TYPE, loot->loot_type, item->count);
                 player->UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_LOOT_EPIC_ITEM, item->itemid, item->count);
+
+                sScriptMgr->OnPlayerLootItem(player, storedItem, item->count, player->GetLootGUID());
             }
             else
+            {
                 player->SendItemRetrievalMail(item->itemid, item->count);
+                item->is_looted = true;
+            }
         }
 
         loot->clear();
+        creature->AllLootRemovedFromCorpse();
     }
 };
 
